@@ -1,151 +1,15 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>🔴 Neon Live Monitor</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <style>
-    body {
-      background: radial-gradient(circle at top, #111 0%, #000 60%);
-      color:#fff;
-      font-family:Arial, sans-serif;
-      margin:0;
-      padding:20px;
-    }
-
-    h2 {
-      color:#ff004c;
-      text-shadow:0 0 10px #ff004c;
-    }
-
-    .support-banner {
-      background:#111;
-      border:1px solid #ff004c;
-      padding:12px;
-      border-radius:12px;
-      margin-bottom:20px;
-      text-align:center;
-      box-shadow:0 0 15px #ff004c;
-      font-weight:bold;
-    }
-
-    .tabs {
-      display:flex;
-      gap:10px;
-      margin-bottom:20px;
-      flex-wrap:wrap;
-    }
-
-    .tab {
-      padding:8px 18px;
-      background:#111;
-      border:1px solid #333;
-      border-radius:8px;
-      cursor:pointer;
-      transition:0.3s;
-    }
-
-    .tab:hover {
-      border-color:#00f7ff;
-      box-shadow:0 0 10px #00f7ff;
-    }
-
-    .tab.active {
-      border-color:#ff004c;
-      box-shadow:0 0 15px #ff004c;
-      color:#ff004c;
-    }
-
-    .grid {
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:18px;
-    }
-
-    .card {
-      background:#0d0d0d;
-      border-radius:15px;
-      padding:10px;
-      border:1px solid #222;
-      transition:0.3s;
-    }
-
-    .card:hover {
-      transform:translateY(-5px);
-      box-shadow:0 0 25px #00f7ff;
-      border-color:#00f7ff;
-    }
-
-    iframe {
-      width:100%;
-      height:220px;
-      border:none;
-      border-radius:12px;
-    }
-
-    .info {
-      font-size:13px;
-      margin-top:10px;
-    }
-
-    .channel {
-      font-weight:bold;
-      color:#00f7ff;
-      text-shadow:0 0 8px #00f7ff;
-    }
-
-    .notification {
-      position:fixed;
-      bottom:25px;
-      right:25px;
-      background:#111;
-      border:1px solid #00f7ff;
-      padding:15px;
-      border-radius:12px;
-      box-shadow:0 0 20px #00f7ff;
-      animation:slideIn 0.4s ease;
-      cursor:pointer;
-      z-index:999;
-    }
-
-    @keyframes slideIn {
-      from { transform:translateY(30px); opacity:0; }
-      to { transform:translateY(0); opacity:1; }
-    }
-
-    @media (max-width:1024px) {
-      .grid { grid-template-columns:repeat(2,1fr); }
-    }
-
-    @media (max-width:768px) {
-      .grid { grid-template-columns:1fr; }
-      iframe { height:260px; }
-    }
-  </style>
-</head>
-<body>
-
-<h2>🔴 Neon Multi Live Monitor</h2>
-
-<div class="support-banner">
-  ❤️ Jangan lupa support para streamer ya plenger!
-</div>
-
-<div class="tabs" id="tabs"></div>
-<div class="grid" id="grid"></div>
-
 <script>
 
 let dataStore = {};
 let activeTag = null;
 let currentVideos = {};
 let firstLoad = true;
+let seenVideos = new Set(); // 🔥 track semua video yang pernah muncul
 
 async function loadLive(){
   const res = await fetch("/api/live");
   const newData = await res.json();
 
-  const previousVideos = {...currentVideos};
   dataStore = newData;
 
   renderTabs();
@@ -154,11 +18,48 @@ async function loadLive(){
     showCategory(activeTag);
   }
 
+  // 🔥 setelah render, baru cek notifikasi
   if(!firstLoad){
-    checkNewLive(previousVideos);
+    checkNewLive();
   }
 
   firstLoad = false;
+}
+
+function checkNewLive(){
+
+  Object.keys(dataStore).forEach(tag => {
+
+    const videos = dataStore[tag] || [];
+
+    videos.forEach(video => {
+
+      // 🔥 hanya notif jika belum pernah terlihat sama sekali
+      if(!seenVideos.has(video.videoId)){
+        showNotification("🔴 Live baru di #" + tag.toUpperCase(), tag);
+        seenVideos.add(video.videoId);
+      }
+
+    });
+  });
+}
+
+function showNotification(message, tag){
+
+  const notif = document.createElement("div");
+  notif.className = "notification";
+  notif.innerText = message;
+
+  notif.onclick = () => {
+    activeTag = tag;
+    showCategory(tag);
+    updateActiveTab();
+    notif.remove();
+  };
+
+  document.body.appendChild(notif);
+
+  setTimeout(()=> notif.remove(), 4000);
 }
 
 function renderTabs(){
@@ -207,7 +108,11 @@ function showCategory(tag){
 
     newVideoMap[video.videoId] = video;
 
-    // 🔥 Jika sudah ada, jangan buat ulang (anti stop stream)
+    // 🔥 tambahkan ke seenVideos saat pertama kali muncul
+    if(!seenVideos.has(video.videoId)){
+      seenVideos.add(video.videoId);
+    }
+
     if(document.getElementById("video-" + video.videoId)){
       return;
     }
@@ -229,48 +134,20 @@ function showCategory(tag){
     grid.appendChild(card);
   });
 
-  // 🔥 Hapus hanya yang tidak live lagi
   Object.keys(currentVideos).forEach(id => {
     if(!newVideoMap[id]){
       const el = document.getElementById("video-" + id);
-      if(el) el.remove();
+      if(el){
+        el.classList.add("fade-out");
+        setTimeout(() => el.remove(), 600);
+      }
     }
   });
 
   currentVideos = newVideoMap;
 }
 
-function checkNewLive(previousVideos){
-  Object.keys(dataStore).forEach(tag => {
-    const videos = dataStore[tag] || [];
-    videos.forEach(video => {
-      if(!previousVideos[video.videoId]){
-        showNotification("🔴 Live baru di #" + tag.toUpperCase(), tag);
-      }
-    });
-  });
-}
-
-function showNotification(message, tag){
-  const notif = document.createElement("div");
-  notif.className = "notification";
-  notif.innerText = message;
-
-  notif.onclick = () => {
-    activeTag = tag;
-    showCategory(tag);
-    updateActiveTab();
-    notif.remove();
-  };
-
-  document.body.appendChild(notif);
-  setTimeout(()=> notif.remove(), 5000);
-}
-
 loadLive();
 setInterval(loadLive, 60000);
 
 </script>
-
-</body>
-</html>
