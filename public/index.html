@@ -29,6 +29,21 @@
       font-weight:bold;
     }
 
+    .controls {
+      margin-bottom:15px;
+    }
+
+    .btn-main {
+      padding:6px 12px;
+      background:#00f7ff;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+      color:black;
+      font-weight:bold;
+      margin-right:8px;
+    }
+
     .tabs {
       display:flex;
       gap:10px;
@@ -109,14 +124,15 @@
       font-size:11px;
     }
 
-    .show-hidden {
-      margin-bottom:15px;
-      padding:6px 12px;
+    .unhide-btn {
+      margin-top:8px;
+      padding:5px 10px;
       background:#00f7ff;
       border:none;
-      border-radius:8px;
+      border-radius:6px;
       cursor:pointer;
       color:black;
+      font-size:11px;
       font-weight:bold;
     }
 
@@ -157,9 +173,15 @@
   ❤️ Jangan lupa support para streamer favorit kalian!
 </div>
 
-<button class="show-hidden" onclick="toggleHidden()">
-  Toggle Hidden Streams
-</button>
+<div class="controls">
+  <button class="btn-main" onclick="toggleHiddenMode()">
+    Toggle Hidden View
+  </button>
+
+  <button class="btn-main" onclick="clearHidden()">
+    Clear Hidden
+  </button>
+</div>
 
 <div class="tabs" id="tabs"></div>
 <div class="grid" id="grid"></div>
@@ -195,10 +217,8 @@ async function loadLive(){
 }
 
 function checkNewLive(){
-
   Object.keys(dataStore).forEach(tag => {
     const videos = dataStore[tag] || [];
-
     videos.forEach(video => {
       if(!seenVideos.has(video.videoId)){
         showNotification("🔴 Live baru di #" + tag.toUpperCase(), tag);
@@ -209,7 +229,6 @@ function checkNewLive(){
 }
 
 function showNotification(message, tag){
-
   const notif = document.createElement("div");
   notif.className = "notification";
   notif.innerText = message;
@@ -264,20 +283,17 @@ function showCategory(tag){
 
   const grid = document.getElementById("grid");
   const videos = dataStore[tag] || [];
-
   let newVideoMap = {};
 
   videos.forEach(video => {
 
-    if(!showHiddenMode && hiddenVideos.includes(video.videoId)){
+    const isHidden = hiddenVideos.includes(video.videoId);
+
+    if(!showHiddenMode && isHidden){
       return;
     }
 
     newVideoMap[video.videoId] = video;
-
-    if(!seenVideos.has(video.videoId)){
-      seenVideos.add(video.videoId);
-    }
 
     if(document.getElementById("video-" + video.videoId)){
       return;
@@ -295,9 +311,11 @@ function showCategory(tag){
         <div class="channel">${video.channelTitle}</div>
         <div>${video.title}</div>
 
-        <button class="hide-btn" onclick="hideVideo('${video.videoId}')">
-          Hide
-        </button>
+        ${
+          isHidden
+          ? `<button class="unhide-btn" onclick="unhideVideo('${video.videoId}')">Unhide</button>`
+          : `<button class="hide-btn" onclick="hideVideo('${video.videoId}')">Hide</button>`
+        }
       </div>
     `;
 
@@ -322,16 +340,23 @@ function hideVideo(videoId){
     hiddenVideos.push(videoId);
     localStorage.setItem("hiddenVideos", JSON.stringify(hiddenVideos));
   }
-
-  const el = document.getElementById("video-" + videoId);
-  if(el){
-    el.classList.add("fade-out");
-    setTimeout(() => el.remove(), 600);
-  }
+  showCategory(activeTag);
 }
 
-function toggleHidden(){
+function unhideVideo(videoId){
+  hiddenVideos = hiddenVideos.filter(id => id !== videoId);
+  localStorage.setItem("hiddenVideos", JSON.stringify(hiddenVideos));
+  showCategory(activeTag);
+}
+
+function toggleHiddenMode(){
   showHiddenMode = !showHiddenMode;
+  showCategory(activeTag);
+}
+
+function clearHidden(){
+  hiddenVideos = [];
+  localStorage.removeItem("hiddenVideos");
   showCategory(activeTag);
 }
 
