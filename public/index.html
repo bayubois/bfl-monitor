@@ -14,12 +14,10 @@
     }
 
     h2 {
-      margin-top:0;
       color:#ff004c;
       text-shadow:0 0 10px #ff004c;
     }
 
-    /* SUPPORT BANNER */
     .support-banner {
       background:#111;
       border:1px solid #ff004c;
@@ -31,7 +29,6 @@
       font-weight:bold;
     }
 
-    /* TABS */
     .tabs {
       display:flex;
       gap:10px;
@@ -59,14 +56,12 @@
       color:#ff004c;
     }
 
-    /* GRID */
     .grid {
       display:grid;
       grid-template-columns:repeat(3,1fr);
       gap:18px;
     }
 
-    /* CARD */
     .card {
       background:#0d0d0d;
       border-radius:15px;
@@ -99,33 +94,6 @@
       text-shadow:0 0 8px #00f7ff;
     }
 
-    /* ACTION BUTTONS */
-    .actions {
-      margin-top:10px;
-      display:flex;
-      gap:6px;
-      flex-wrap:wrap;
-    }
-
-    .btn {
-      padding:6px 10px;
-      font-size:11px;
-      border:none;
-      border-radius:6px;
-      cursor:pointer;
-      transition:0.3s;
-      background:#111;
-      color:#fff;
-      border:1px solid #333;
-    }
-
-    .btn:hover {
-      transform:scale(1.05);
-      box-shadow:0 0 10px #ff004c;
-      border-color:#ff004c;
-    }
-
-    /* NOTIFICATION */
     .notification {
       position:fixed;
       bottom:25px;
@@ -160,7 +128,7 @@
 <h2>🔴 Neon Multi Live Monitor</h2>
 
 <div class="support-banner">
-  ❤️ Jangan lupa support para streamer favorit kalian!
+  ❤️ Jangan lupa support para streamer ya plenger!
 </div>
 
 <div class="tabs" id="tabs"></div>
@@ -181,6 +149,7 @@ async function loadLive(){
   dataStore = newData;
 
   renderTabs();
+
   if(activeTag){
     showCategory(activeTag);
   }
@@ -190,32 +159,6 @@ async function loadLive(){
   }
 
   firstLoad = false;
-}
-
-function showNotification(message, tag){
-  const notif = document.createElement("div");
-  notif.className = "notification";
-  notif.innerText = message;
-
-  notif.onclick = () => {
-    activeTag = tag;
-    showCategory(tag);
-    notif.remove();
-  };
-
-  document.body.appendChild(notif);
-  setTimeout(()=> notif.remove(), 5000);
-}
-
-function checkNewLive(previousVideos){
-  Object.keys(dataStore).forEach(tag => {
-    const videos = dataStore[tag] || [];
-    videos.forEach(video => {
-      if(!previousVideos[video.videoId]){
-        showNotification("🔴 Live baru di #" + tag.toUpperCase(), tag);
-      }
-    });
-  });
 }
 
 function renderTabs(){
@@ -231,67 +174,97 @@ function renderTabs(){
     btn.onclick = () => {
       activeTag = tag;
       showCategory(tag);
+      updateActiveTab();
     };
 
     if(index === 0 && !activeTag){
       activeTag = tag;
     }
 
-    if(tag === activeTag){
-      btn.classList.add("active");
-    }
-
     tabs.appendChild(btn);
+  });
+
+  updateActiveTab();
+}
+
+function updateActiveTab(){
+  document.querySelectorAll(".tab").forEach(tab=>{
+    tab.classList.remove("active");
+    if(tab.innerText.toLowerCase() === activeTag){
+      tab.classList.add("active");
+    }
   });
 }
 
 function showCategory(tag){
 
-  document.querySelectorAll(".tab").forEach(tab=>{
-    tab.classList.remove("active");
-    if(tab.innerText.toLowerCase() === tag){
-      tab.classList.add("active");
-    }
-  });
-
   const grid = document.getElementById("grid");
-  grid.innerHTML = "";
-
   const videos = dataStore[tag] || [];
+
   let newVideoMap = {};
 
   videos.forEach(video => {
 
     newVideoMap[video.videoId] = video;
 
+    // 🔥 Jika sudah ada, jangan buat ulang (anti stop stream)
+    if(document.getElementById("video-" + video.videoId)){
+      return;
+    }
+
     const card = document.createElement("div");
     card.className = "card";
+    card.id = "video-" + video.videoId;
 
     card.innerHTML = `
-      <iframe src="https://www.youtube.com/embed/${video.videoId}?mute=1"
+      <iframe src="https://www.youtube.com/embed/${video.videoId}?autoplay=1&mute=1"
               allowfullscreen></iframe>
 
       <div class="info">
         <div class="channel">${video.channelTitle}</div>
         <div>${video.title}</div>
-
-        <div class="actions">
-          <button class="btn"
-            onclick="window.open('https://youtube.com/watch?v=${video.videoId}','_blank')">
-            YouTube
-          </button>
-          <button class="btn"
-            onclick="window.open('https://youtube.com/live_chat?v=${video.videoId}','_blank')">
-            Chat
-          </button>
-        </div>
       </div>
     `;
 
     grid.appendChild(card);
   });
 
+  // 🔥 Hapus hanya yang tidak live lagi
+  Object.keys(currentVideos).forEach(id => {
+    if(!newVideoMap[id]){
+      const el = document.getElementById("video-" + id);
+      if(el) el.remove();
+    }
+  });
+
   currentVideos = newVideoMap;
+}
+
+function checkNewLive(previousVideos){
+  Object.keys(dataStore).forEach(tag => {
+    const videos = dataStore[tag] || [];
+    videos.forEach(video => {
+      if(!previousVideos[video.videoId]){
+        showNotification("🔴 Live baru di #" + tag.toUpperCase(), tag);
+      }
+    });
+  });
+}
+
+function showNotification(message, tag){
+  const notif = document.createElement("div");
+  notif.className = "notification";
+  notif.innerText = message;
+
+  notif.onclick = () => {
+    activeTag = tag;
+    showCategory(tag);
+    updateActiveTab();
+    notif.remove();
+  };
+
+  document.body.appendChild(notif);
+  setTimeout(()=> notif.remove(), 5000);
 }
 
 loadLive();
@@ -301,4 +274,3 @@ setInterval(loadLive, 60000);
 
 </body>
 </html>
-
