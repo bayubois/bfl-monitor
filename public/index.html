@@ -1,10 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>🔴 Neon Live Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      background: radial-gradient(circle at top, #111 0%, #000 60%);
+      color:#fff;
+      font-family:Arial, sans-serif;
+      margin:0;
+      padding:20px;
+    }
+
+    h2 {
+      color:#ff004c;
+      text-shadow:0 0 10px #ff004c;
+    }
+
+    .support-banner {
+      background:#111;
+      border:1px solid #ff004c;
+      padding:12px;
+      border-radius:12px;
+      margin-bottom:20px;
+      text-align:center;
+      box-shadow:0 0 15px #ff004c;
+      font-weight:bold;
+    }
+
+    .tabs {
+      display:flex;
+      gap:10px;
+      margin-bottom:20px;
+      flex-wrap:wrap;
+    }
+
+    .tab {
+      padding:8px 18px;
+      background:#111;
+      border:1px solid #333;
+      border-radius:8px;
+      cursor:pointer;
+      transition:0.3s;
+    }
+
+    .tab.active {
+      border-color:#ff004c;
+      box-shadow:0 0 15px #ff004c;
+      color:#ff004c;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:18px;
+    }
+
+    .card {
+      background:#0d0d0d;
+      border-radius:15px;
+      padding:10px;
+      border:1px solid #222;
+      transition:0.3s;
+      opacity:1;
+    }
+
+    .card:hover {
+      transform:translateY(-5px);
+      box-shadow:0 0 25px #00f7ff;
+      border-color:#00f7ff;
+    }
+
+    .fade-out {
+      animation:fadeOut 0.6s forwards;
+    }
+
+    @keyframes fadeOut {
+      from { opacity:1; transform:scale(1); }
+      to { opacity:0; transform:scale(0.95); }
+    }
+
+    iframe {
+      width:100%;
+      height:220px;
+      border:none;
+      border-radius:12px;
+    }
+
+    .info {
+      font-size:13px;
+      margin-top:10px;
+    }
+
+    .channel {
+      font-weight:bold;
+      color:#00f7ff;
+    }
+
+    .hide-btn {
+      margin-top:8px;
+      padding:5px 10px;
+      background:#ff004c;
+      border:none;
+      border-radius:6px;
+      cursor:pointer;
+      color:white;
+      font-size:11px;
+    }
+
+    .show-hidden {
+      margin-bottom:15px;
+      padding:6px 12px;
+      background:#00f7ff;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+      color:black;
+      font-weight:bold;
+    }
+
+    .notification {
+      position:fixed;
+      bottom:25px;
+      right:25px;
+      background:#111;
+      border:1px solid #00f7ff;
+      padding:15px;
+      border-radius:12px;
+      box-shadow:0 0 20px #00f7ff;
+      animation:slideIn 0.4s ease;
+      cursor:pointer;
+      z-index:999;
+    }
+
+    @keyframes slideIn {
+      from { transform:translateY(30px); opacity:0; }
+      to { transform:translateY(0); opacity:1; }
+    }
+
+    @media (max-width:1024px) {
+      .grid { grid-template-columns:repeat(2,1fr); }
+    }
+
+    @media (max-width:768px) {
+      .grid { grid-template-columns:1fr; }
+      iframe { height:260px; }
+    }
+  </style>
+</head>
+<body>
+
+<h2>🔴 Neon Multi Live Monitor</h2>
+
+<div class="support-banner">
+  ❤️ Jangan lupa support para streamer favorit kalian!
+</div>
+
+<button class="show-hidden" onclick="toggleHidden()">
+  Toggle Hidden Streams
+</button>
+
+<div class="tabs" id="tabs"></div>
+<div class="grid" id="grid"></div>
+
 <script>
 
 let dataStore = {};
 let activeTag = null;
 let currentVideos = {};
 let firstLoad = true;
-let seenVideos = new Set(); // 🔥 track semua video yang pernah muncul
+let seenVideos = new Set();
+let showHiddenMode = false;
+
+let hiddenVideos = JSON.parse(localStorage.getItem("hiddenVideos") || "[]");
 
 async function loadLive(){
   const res = await fetch("/api/live");
@@ -18,7 +187,6 @@ async function loadLive(){
     showCategory(activeTag);
   }
 
-  // 🔥 setelah render, baru cek notifikasi
   if(!firstLoad){
     checkNewLive();
   }
@@ -29,17 +197,13 @@ async function loadLive(){
 function checkNewLive(){
 
   Object.keys(dataStore).forEach(tag => {
-
     const videos = dataStore[tag] || [];
 
     videos.forEach(video => {
-
-      // 🔥 hanya notif jika belum pernah terlihat sama sekali
       if(!seenVideos.has(video.videoId)){
         showNotification("🔴 Live baru di #" + tag.toUpperCase(), tag);
         seenVideos.add(video.videoId);
       }
-
     });
   });
 }
@@ -58,7 +222,6 @@ function showNotification(message, tag){
   };
 
   document.body.appendChild(notif);
-
   setTimeout(()=> notif.remove(), 4000);
 }
 
@@ -106,9 +269,12 @@ function showCategory(tag){
 
   videos.forEach(video => {
 
+    if(!showHiddenMode && hiddenVideos.includes(video.videoId)){
+      return;
+    }
+
     newVideoMap[video.videoId] = video;
 
-    // 🔥 tambahkan ke seenVideos saat pertama kali muncul
     if(!seenVideos.has(video.videoId)){
       seenVideos.add(video.videoId);
     }
@@ -128,6 +294,10 @@ function showCategory(tag){
       <div class="info">
         <div class="channel">${video.channelTitle}</div>
         <div>${video.title}</div>
+
+        <button class="hide-btn" onclick="hideVideo('${video.videoId}')">
+          Hide
+        </button>
       </div>
     `;
 
@@ -147,7 +317,28 @@ function showCategory(tag){
   currentVideos = newVideoMap;
 }
 
+function hideVideo(videoId){
+  if(!hiddenVideos.includes(videoId)){
+    hiddenVideos.push(videoId);
+    localStorage.setItem("hiddenVideos", JSON.stringify(hiddenVideos));
+  }
+
+  const el = document.getElementById("video-" + videoId);
+  if(el){
+    el.classList.add("fade-out");
+    setTimeout(() => el.remove(), 600);
+  }
+}
+
+function toggleHidden(){
+  showHiddenMode = !showHiddenMode;
+  showCategory(activeTag);
+}
+
 loadLive();
 setInterval(loadLive, 60000);
 
 </script>
+
+</body>
+</html>
