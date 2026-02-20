@@ -1,67 +1,133 @@
-import tags from "../channels.json";
+import channels from "../channels.json";
 
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
+// ===== CONFIG =====
+const NORMAL_SCAN_SIZE = 5;
+const HOT_SCAN_SIZE = 9999; // scan semua
+const MEMORY_CACHE_TIME = 10 * 60 * 1000; // 10 menit
+// ===================
+
+let cachedData = {};
+let lastFetchTime = 0;
+let channelIndex = 0;
+let hotMode = false;
+
 export default async function handler(req, res) {
 
-  // 🔥 Cache 1 jam
   res.setHeader(
     "Cache-Control",
-    "s-maxage=3600, stale-while-revalidate"
+    "s-maxage=600, stale-while-revalidate"
   );
 
-  let result = {};
+  const now = Date.now();
 
-  // Inisialisasi hasil
-  for (const tag in tags) {
-    result[tag] = [];
+  if (now - lastFetchTime < MEMORY_CACHE_TIME) {
+    return res.status(200).json(cachedData);
   }
 
   try {
 
-    // 🔥 Gabungkan semua hashtag dalam 1 query
-    const hashtagList = Object.values(tags);
-    const query = hashtagList.join(" OR ");
+    let result = {};
+    let videoIds = [];
+    let videoMap = {};
 
-    const liveRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&eventType=live&type=video&maxResults=20&key=${API_KEY}`
+    for (const tag in channels) {
+      result[tag] = [];
+    }
+
+    const allChannels = Object.values(channels).flat();
+
+    const scanSize = hotMode ? HOT_SCAN_SIZE : NORMAL_SCAN_SIZE;
+
+    const slice = allChannels.slice(
+      channelIndex,
+      channelIndex + scanSize
     );
 
-    const liveData = await liveRes.json();
+    for (const channelId of slice) {
 
-    if (liveData.items && liveData.items.length > 0) {
+      const uploadsPlaylist = channelId.replace(/^UC/, "UU");
 
-      liveData.items.forEach(item => {
+      const playlistRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylist}&maxResults=1&key=${API_KEY}`
+      );
 
-        const title = item.snippet.title.toLowerCase();
+      const playlistData = await playlistRes.json();
+      if (!playlistData.items?.length) continue;
 
-        for (const tag in tags) {
+      const latestVideoId =
+        playlistData.items[0].snippet.resourceId.videoId;
 
-          const hashtag = tags[tag].toLowerCase();
+      videoIds.push(latestVideoId);
 
-          if (title.includes(hashtag)) {
+      const tag = Object.keys(channels)
+        .find(t => channels[t].includes(channelId));
 
-            result[tag].push({
-              videoId: item.id.videoId,
-              title: item.snippet.title,
-              channelTitle: item.snippet.channelTitle
-            });
+      videoMap[latestVideoId] = {
+        tag,
+        title: playlistData.items[0].snippet.title,
+        channelTitle: playlistData.items[0].snippet.channelTitle
+      };
+
+    }
+
+    channelIndex += scanSize;
+    if (channelIndex >= allChannels.length) {
+      channelIndex = 0;
+    }
+
+    if (videoIds.length > 0) {
+
+      const liveRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoIds.join(",")}&key=${API_KEY}`
+      );
+
+      const liveData = await liveRes.json();
+
+      let hasLive = false;
+
+      if (liveData.items) {
+
+        liveData.items.forEach(video => {
+
+          if (
+            video.liveStreamingDetails &&
+            video.liveStreamingDetails.actualStartTime &&
+            !video.liveStreamingDetails.actualEndTime
+          ) {
+
+            const info = videoMap[video.id];
+
+            if (info) {
+              result[info.tag].push({
+                videoId: video.id,
+                title: info.title,
+                channelTitle: info.channelTitle
+              });
+
+              hasLive = true;
+            }
 
           }
 
-        }
+        });
 
-      });
+      }
+
+      // 🔥 Aktifkan hot mode kalau ada live
+      hotMode = hasLive;
 
     }
+
+    cachedData = result;
+    lastFetchTime = now;
 
     return res.status(200).json(result);
 
   } catch (error) {
-
     console.log("API ERROR:", error);
-    return res.status(500).json({ error: "Server error" });
-
+    return res.status(200).json(cachedData || {});
   }
 
 }
