@@ -1,53 +1,84 @@
+import fetch from "node-fetch";
+import channels from "../channels.json";
+
+const API_KEY = process.env.YOUTUBE_API_KEY;
+
 export default async function handler(req, res) {
 
-  const API_KEY = process.env.YOUTUBE_API_KEY;
-  const HASHTAGS = ["bfl", "nakamamc"];
+  // Cache 15 menit
+  res.setHeader(
+    "Cache-Control",
+    "s-maxage=900, stale-while-revalidate"
+  );
 
-  try {
+  let result = {};
+  let videoIds = [];
+  let videoMap = {};
 
-    const query = HASHTAGS.join(" OR ");
+  for (const tag in channels) {
+    result[tag] = [];
 
-    const response = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&eventType=live&maxResults=25&q=${encodeURIComponent(query)}&regionCode=ID&relevanceLanguage=id&key=${API_KEY}`
+    for (const channelId of channels[tag]) {
+
+      try {
+
+        const channelRes = await fetch(
+          `https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${channelId}&key=${API_KEY}`
+        );
+
+        const channelData = await channelRes.json();
+        if (!channelData.items || channelData.items.length === 0) continue;
+
+        const uploadsPlaylist =
+          channelData.items[0].contentDetails.relatedPlaylists.uploads;
+
+        const playlistRes = await fetch(
+          `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylist}&maxResults=1&key=${API_KEY}`
+        );
+
+        const playlistData = await playlistRes.json();
+        if (!playlistData.items || playlistData.items.length === 0) continue;
+
+        const latestVideo =
+          playlistData.items[0].snippet.resourceId.videoId;
+
+        videoIds.push(latestVideo);
+        videoMap[latestVideo] = {
+          tag,
+          title: playlistData.items[0].snippet.title,
+          channelTitle: playlistData.items[0].snippet.channelTitle
+        };
+
+      } catch (err) {
+        console.log("Error channel:", channelId);
+      }
+    }
+  }
+
+  if (videoIds.length > 0) {
+
+    const liveRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoIds.join(",")}&key=${API_KEY}`
     );
 
-    const data = await response.json();
+    const liveData = await liveRes.json();
 
-    if (!data.items) {
-      res.setHeader(
-        "Cache-Control",
-        "s-maxage=60, stale-while-revalidate=120"
-      );
-      return res.status(200).json({});
-    }
-
-    let categorized = {};
-    HASHTAGS.forEach(tag => categorized[tag] = []);
-
-    data.items.forEach(item => {
-      const title = item.snippet.title.toLowerCase();
-      const desc = item.snippet.description.toLowerCase();
-
-      HASHTAGS.forEach(tag => {
-        if (title.includes("#" + tag) || desc.includes("#" + tag)) {
-          categorized[tag].push({
-            videoId: item.id.videoId,
-            title: item.snippet.title,
-            channelTitle: item.snippet.channelTitle
+    if (liveData.items) {
+      liveData.items.forEach(video => {
+        if (
+          video.liveStreamingDetails &&
+          !video.liveStreamingDetails.actualEndTime
+        ) {
+          const info = videoMap[video.id];
+          result[info.tag].push({
+            videoId: video.id,
+            title: info.title,
+            channelTitle: info.channelTitle
           });
         }
       });
-    });
-
-    // 🔥 EDGE CACHE HEADER
-    res.setHeader(
-      "Cache-Control",
-      "s-maxage=60, stale-while-revalidate=120"
-    );
-
-    return res.status(200).json(categorized);
-
-  } catch (error) {
-    return res.status(500).json({ error: "Failed to fetch live data" });
+    }
   }
+
+  res.status(200).json(result);
 }
