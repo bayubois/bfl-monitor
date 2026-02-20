@@ -1,43 +1,10 @@
 import tags from "../channels.json";
 
-const API_KEYS = [
-  process.env.YOUTUBE_API_KEY
-];
-
-async function fetchWithRotation(urlBase) {
-
-  for (let key of API_KEYS) {
-
-    try {
-
-      const response = await fetch(`${urlBase}&key=${key}`);
-      const data = await response.json();
-
-      // Jika quota habis, coba key berikutnya
-      if (data.error && data.error.errors) {
-
-        const reason = data.error.errors[0].reason;
-
-        if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
-          console.log("Quota exceeded for key, trying next...");
-          continue;
-        }
-
-      }
-
-      return data;
-
-    } catch (err) {
-      continue;
-    }
-
-  }
-
-  throw new Error("All API keys failed");
-}
+const API_KEY = process.env.YOUTUBE_API_KEY;
 
 export default async function handler(req, res) {
 
+  // 🔥 Cache 1 jam
   res.setHeader(
     "Cache-Control",
     "s-maxage=3600, stale-while-revalidate"
@@ -45,21 +12,24 @@ export default async function handler(req, res) {
 
   let result = {};
 
+  // Inisialisasi hasil
   for (const tag in tags) {
     result[tag] = [];
   }
 
   try {
 
+    // 🔥 Gabungkan semua hashtag dalam 1 query
     const hashtagList = Object.values(tags);
     const query = hashtagList.join(" OR ");
 
-    const baseURL =
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&eventType=live&type=video&maxResults=20`;
+    const liveRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&eventType=live&type=video&maxResults=20&key=${API_KEY}`
+    );
 
-    const liveData = await fetchWithRotation(baseURL);
+    const liveData = await liveRes.json();
 
-    if (liveData.items) {
+    if (liveData.items && liveData.items.length > 0) {
 
       liveData.items.forEach(item => {
 
@@ -89,8 +59,9 @@ export default async function handler(req, res) {
 
   } catch (error) {
 
-    console.log("All keys exhausted");
-    return res.status(500).json({ error: "All API keys exhausted" });
+    console.log("API ERROR:", error);
+    return res.status(500).json({ error: "Server error" });
 
   }
+
 }
