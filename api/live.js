@@ -1,8 +1,7 @@
 import tags from "../channels.json";
 
 const API_KEYS = [
-  process.env.YOUTUBE_API_KEY_1,
-  process.env.YOUTUBE_API_KEY_2
+  process.env.YOUTUBE_API_KEY
 ];
 
 async function fetchWithRotation(urlBase) {
