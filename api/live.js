@@ -5,7 +5,7 @@ const API_KEY = process.env.YOUTUBE_API_KEY;
 /*
   CONFIG
 */
-const SCAN_SIZE = 5;                    // berapa channel non-live dicek per cycle
+const SCAN_SIZE = 23;                    // berapa channel non-live dicek per cycle
 const MEMORY_CACHE_TIME = 10 * 60 * 1000; // 10 menit
 
 /*
