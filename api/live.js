@@ -1,4 +1,3 @@
-import fetch from "node-fetch";
 import channels from "../channels.json";
 
 const API_KEY = process.env.YOUTUBE_API_KEY;
