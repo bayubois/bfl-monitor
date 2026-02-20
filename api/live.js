@@ -3,7 +3,7 @@ import channels from "../channels.json";
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
 // ===== CONFIG =====
-const NORMAL_SCAN_SIZE = 10;
+const NORMAL_SCAN_SIZE = 23;
 const HOT_SCAN_SIZE = 9999; // scan semua
 const MEMORY_CACHE_TIME = 5 * 60 * 1000; // 10 menit
 // ===================
