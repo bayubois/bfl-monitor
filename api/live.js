@@ -2,19 +2,23 @@ import channels from "../channels.json";
 
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
-// ===== CONFIG =====
-const NORMAL_SCAN_SIZE = 23;
-const HOT_SCAN_SIZE = 9999; // scan semua
-const MEMORY_CACHE_TIME = 5 * 60 * 1000; // 10 menit
-// ===================
+/*
+  CONFIG
+*/
+const SCAN_SIZE = 5;                    // berapa channel non-live dicek per cycle
+const MEMORY_CACHE_TIME = 10 * 60 * 1000; // 10 menit
 
+/*
+  MEMORY STATE
+*/
 let cachedData = {};
 let lastFetchTime = 0;
 let channelIndex = 0;
-let hotMode = false;
+let activeLives = {}; // { channelId: videoId }
 
 export default async function handler(req, res) {
 
+  // Edge cache 10 menit
   res.setHeader(
     "Cache-Control",
     "s-maxage=600, stale-while-revalidate"
@@ -22,6 +26,7 @@ export default async function handler(req, res) {
 
   const now = Date.now();
 
+  // ===== SERVE MEMORY CACHE =====
   if (now - lastFetchTime < MEMORY_CACHE_TIME) {
     return res.status(200).json(cachedData);
   }
@@ -32,19 +37,24 @@ export default async function handler(req, res) {
     let videoIds = [];
     let videoMap = {};
 
+    // Inisialisasi kategori
     for (const tag in channels) {
       result[tag] = [];
     }
 
     const allChannels = Object.values(channels).flat();
 
-    const scanSize = hotMode ? HOT_SCAN_SIZE : NORMAL_SCAN_SIZE;
-
-    const slice = allChannels.slice(
-      channelIndex,
-      channelIndex + scanSize
+    // ===== CHANNEL YANG BELUM LIVE =====
+    const nonLiveChannels = allChannels.filter(
+      id => !activeLives[id]
     );
 
+    const slice = nonLiveChannels.slice(
+      channelIndex,
+      channelIndex + SCAN_SIZE
+    );
+
+    // ===== SCAN CHANNEL BARU (PLAYLIST CHECK) =====
     for (const channelId of slice) {
 
       const uploadsPlaylist = channelId.replace(/^UC/, "UU");
@@ -66,26 +76,45 @@ export default async function handler(req, res) {
 
       videoMap[latestVideoId] = {
         tag,
+        channelId,
         title: playlistData.items[0].snippet.title,
         channelTitle: playlistData.items[0].snippet.channelTitle
       };
-
     }
 
-    channelIndex += scanSize;
-    if (channelIndex >= allChannels.length) {
+    // Geser index rolling
+    channelIndex += SCAN_SIZE;
+    if (channelIndex >= nonLiveChannels.length) {
       channelIndex = 0;
     }
 
+    // ===== TAMBAHKAN CHANNEL YANG SUDAH LIVE =====
+    Object.entries(activeLives).forEach(([channelId, videoId]) => {
+
+      videoIds.push(videoId);
+
+      const tag = Object.keys(channels)
+        .find(t => channels[t].includes(channelId));
+
+      videoMap[videoId] = {
+        tag,
+        channelId,
+        title: "",
+        channelTitle: ""
+      };
+
+    });
+
+    // ===== BULK LIVE CHECK (1 QUOTA) =====
     if (videoIds.length > 0) {
 
       const liveRes = await fetch(
-        `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoIds.join(",")}&key=${API_KEY}`
+        `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails,snippet&id=${videoIds.join(",")}&key=${API_KEY}`
       );
 
       const liveData = await liveRes.json();
 
-      let hasLive = false;
+      let newActiveLives = {};
 
       if (liveData.items) {
 
@@ -98,26 +127,23 @@ export default async function handler(req, res) {
           ) {
 
             const info = videoMap[video.id];
+            if (!info) return;
 
-            if (info) {
-              result[info.tag].push({
-                videoId: video.id,
-                title: info.title,
-                channelTitle: info.channelTitle
-              });
+            result[info.tag].push({
+              videoId: video.id,
+              title: video.snippet.title,
+              channelTitle: video.snippet.channelTitle
+            });
 
-              hasLive = true;
-            }
-
+            newActiveLives[info.channelId] = video.id;
           }
 
         });
 
       }
 
-      // 🔥 Aktifkan hot mode kalau ada live
-      hotMode = hasLive;
-
+      // Update daftar live aktif
+      activeLives = newActiveLives;
     }
 
     cachedData = result;
@@ -126,7 +152,10 @@ export default async function handler(req, res) {
     return res.status(200).json(result);
 
   } catch (error) {
+
     console.log("API ERROR:", error);
+
+    // fallback ke cache lama kalau error
     return res.status(200).json(cachedData || {});
   }
 
