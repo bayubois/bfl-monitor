@@ -1,10 +1,44 @@
 import tags from "../channels.json";
 
-const API_KEY = process.env.YOUTUBE_API_KEY;
+const API_KEYS = [
+  process.env.YOUTUBE_API_KEY_1,
+  process.env.YOUTUBE_API_KEY_2
+];
+
+async function fetchWithRotation(urlBase) {
+
+  for (let key of API_KEYS) {
+
+    try {
+
+      const response = await fetch(`${urlBase}&key=${key}`);
+      const data = await response.json();
+
+      // Jika quota habis, coba key berikutnya
+      if (data.error && data.error.errors) {
+
+        const reason = data.error.errors[0].reason;
+
+        if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
+          console.log("Quota exceeded for key, trying next...");
+          continue;
+        }
+
+      }
+
+      return data;
+
+    } catch (err) {
+      continue;
+    }
+
+  }
+
+  throw new Error("All API keys failed");
+}
 
 export default async function handler(req, res) {
 
-  // 🔥 Cache 1 JAM (hemat quota besar)
   res.setHeader(
     "Cache-Control",
     "s-maxage=3600, stale-while-revalidate"
@@ -12,47 +46,43 @@ export default async function handler(req, res) {
 
   let result = {};
 
+  for (const tag in tags) {
+    result[tag] = [];
+  }
+
   try {
 
-    for (const tag in tags) {
+    const hashtagList = Object.values(tags);
+    const query = hashtagList.join(" OR ");
 
-      result[tag] = [];
+    const baseURL =
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&eventType=live&type=video&maxResults=20`;
 
-      const hashtag = tags[tag];
+    const liveData = await fetchWithRotation(baseURL);
 
-      try {
+    if (liveData.items) {
 
-        // 🔥 ULTRA HEMAT — 1 REQUEST PER HASHTAG
-        const liveRes = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(hashtag)}&eventType=live&type=video&maxResults=10&key=${API_KEY}`
-        );
+      liveData.items.forEach(item => {
 
-        const liveData = await liveRes.json();
+        const title = item.snippet.title.toLowerCase();
 
-        if (liveData.items && liveData.items.length > 0) {
+        for (const tag in tags) {
 
-          liveData.items.forEach(item => {
+          const hashtag = tags[tag].toLowerCase();
 
-            const title = item.snippet.title.toLowerCase();
+          if (title.includes(hashtag)) {
 
-            // 🔥 FILTER TAMBAHAN: judul harus benar-benar mengandung hashtag
-            if (title.includes(hashtag.toLowerCase())) {
+            result[tag].push({
+              videoId: item.id.videoId,
+              title: item.snippet.title,
+              channelTitle: item.snippet.channelTitle
+            });
 
-              result[tag].push({
-                videoId: item.id.videoId,
-                title: item.snippet.title,
-                channelTitle: item.snippet.channelTitle
-              });
-
-            }
-
-          });
+          }
 
         }
 
-      } catch (err) {
-        console.log("Hashtag error:", tag);
-      }
+      });
 
     }
 
@@ -60,9 +90,8 @@ export default async function handler(req, res) {
 
   } catch (error) {
 
-    console.log("API ERROR:", error);
-    return res.status(500).json({ error: "Server error" });
+    console.log("All keys exhausted");
+    return res.status(500).json({ error: "All API keys exhausted" });
 
   }
-
 }
