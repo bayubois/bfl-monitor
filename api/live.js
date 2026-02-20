@@ -5,7 +5,7 @@ const API_KEY = process.env.YOUTUBE_API_KEY;
 // ===== CONFIG =====
 const NORMAL_SCAN_SIZE = 5;
 const HOT_SCAN_SIZE = 9999; // scan semua
-const MEMORY_CACHE_TIME = 10 * 60 * 1000; // 10 menit
+const MEMORY_CACHE_TIME = 5 * 60 * 1000; // 10 menit
 // ===================
 
 let cachedData = {};
