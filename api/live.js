@@ -1,37 +1,42 @@
-import channels from "../channels.json";
+import tags from "../channels.json";
 
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
 export default async function handler(req, res) {
 
-  // Cache 10 menit
+  // 🔥 Cache 1 JAM (hemat quota besar)
   res.setHeader(
     "Cache-Control",
-    "s-maxage=600, stale-while-revalidate"
+    "s-maxage=3600, stale-while-revalidate"
   );
 
   let result = {};
 
   try {
 
-    for (const tag in channels) {
+    for (const tag in tags) {
 
       result[tag] = [];
 
-      for (const channelId of channels[tag]) {
+      const hashtag = tags[tag];
 
-        try {
+      try {
 
-          // 🔥 LANGSUNG CARI LIVE AKTIF
-          const liveRes = await fetch(
-            `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&eventType=live&type=video&key=${API_KEY}`
-          );
+        // 🔥 ULTRA HEMAT — 1 REQUEST PER HASHTAG
+        const liveRes = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(hashtag)}&eventType=live&type=video&maxResults=10&key=${API_KEY}`
+        );
 
-          const liveData = await liveRes.json();
+        const liveData = await liveRes.json();
 
-          if (liveData.items && liveData.items.length > 0) {
+        if (liveData.items && liveData.items.length > 0) {
 
-            liveData.items.forEach(item => {
+          liveData.items.forEach(item => {
+
+            const title = item.snippet.title.toLowerCase();
+
+            // 🔥 FILTER TAMBAHAN: judul harus benar-benar mengandung hashtag
+            if (title.includes(hashtag.toLowerCase())) {
 
               result[tag].push({
                 videoId: item.id.videoId,
@@ -39,14 +44,14 @@ export default async function handler(req, res) {
                 channelTitle: item.snippet.channelTitle
               });
 
-            });
+            }
 
-          }
+          });
 
-        } catch (err) {
-          console.log("Channel error:", channelId);
         }
 
+      } catch (err) {
+        console.log("Hashtag error:", tag);
       }
 
     }
